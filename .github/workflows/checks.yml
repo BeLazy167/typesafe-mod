@@ -1,0 +1,34 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # `plugin test` is part of the function-hooks early access surface and is
+  # absent without this, even on the same published version.
+  CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: '1'
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Checks the manifests and reports which events the module hooks,
+      # which $ nouns it calls, and which environment variables it reads.
+      - name: Validate the plugin
+        run: claude plugin validate .
+
+      # Runs hooks/*.test.ts against the engine's own test harness. The
+      # harness runs offline: no fs, network or process beneath the plugins.
+      - name: Run the plugin tests
+        run: claude plugin test .
