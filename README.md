@@ -182,6 +182,15 @@ The router skips multi-select steps, because a multi-select answer is not a
 Choice and approximating one would answer a question you did not ask. The other
 steps in the same dialog still route.
 
+A skipped step says which step it was and what was wrong with it, because
+"did not parse" does not tell you whether to change anything:
+
+```
+typesafe-mod: not routed, step 1 is multi-select, which is not a Choice
+typesafe-mod: skipped 1 of 3, step 2 offers 1, so there is nothing to
+choose between
+```
+
 The panel draws bars for the first answered step only. The engine caps what a
 hook may add around a dialog, so a second set of bars would be refused and core
 would draw its own. Every step still gets a transcript line, where text costs
@@ -201,5 +210,5 @@ nothing.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 38 tests
+claude plugin test typesafe-skill-mod     # 43 tests
 ```

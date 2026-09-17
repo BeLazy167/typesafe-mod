@@ -462,40 +462,95 @@ export function isDecisionView(v: unknown): v is DecisionView {
 // Batched dialogs: several questions in one AskUserQuestion call.
 // ---------------------------------------------------------------------------
 
+/** A plain-English name for a value, for diagnostics. */
+const describe = (v: unknown): string =>
+  v === null ? 'null' : Array.isArray(v) ? 'an array' : typeof v;
+
 /**
- * Read every routable question out of an AskUserQuestion call.
+ * What a scan of a dialog's steps found, and why anything was dropped.
+ *
+ * A bare list of routable questions cannot say why a dialog produced none, so
+ * a skipped step reports itself. "step 2 is multi-select" and "questions is
+ * undefined" are different faults, and only one of them is worth changing.
+ */
+export type QuestionScan = {
+  /** Steps the router can turn into a Choice, in the order the dialog draws them. */
+  routable: AskQuestion[];
+  /** One line per dropped step, naming which step and what was wrong. */
+  skipped: string[];
+};
+
+/**
+ * Read every routable question out of an AskUserQuestion call, and report the
+ * rest.
  *
  * A dialog may carry several steps. Each single-select step with two or more
- * options is its own Choice. Multi-select steps are dropped rather than
- * approximated, and a call with none of them routes nothing.
+ * options is its own Choice. Anything else is dropped with a reason rather
+ * than approximated.
  *
  * @param input The tool call's `questions` value, typed `unknown[]`.
- * @returns The routable questions in the order the dialog draws them.
  */
-export function readAskQuestions(input: unknown): AskQuestion[] {
-  if (!Array.isArray(input)) return [];
-  const out: AskQuestion[] = [];
-  for (const raw of input) {
-    const q = asRecord(raw);
-    if (!q || q.multiSelect === true) continue;
+export function scanAskQuestions(input: unknown): QuestionScan {
+  if (!Array.isArray(input)) {
+    return { routable: [], skipped: [`questions is ${describe(input)}, not an array`] };
+  }
+  if (input.length === 0) {
+    return { routable: [], skipped: ['the call carried no questions'] };
+  }
 
+  const routable: AskQuestion[] = [];
+  const skipped: string[] = [];
+
+  for (let i = 0; i < input.length; i++) {
+    const at = `step ${i + 1}`;
+    const raw = input[i];
+    const q = asRecord(raw);
+    if (!q) {
+      skipped.push(`${at} is ${describe(raw)}, not an object`);
+      continue;
+    }
+    if (q.multiSelect === true) {
+      skipped.push(`${at} is multi-select, which is not a Choice`);
+      continue;
+    }
     const question = asString(q.question);
-    if (!question || !Array.isArray(q.options) || q.options.length < 2) continue;
+    if (!question) {
+      skipped.push(`${at} has no question text`);
+      continue;
+    }
+    if (!Array.isArray(q.options)) {
+      skipped.push(`${at} has ${describe(q.options)} where its options should be`);
+      continue;
+    }
+    if (q.options.length < 2) {
+      skipped.push(`${at} offers ${q.options.length}, so there is nothing to choose between`);
+      continue;
+    }
 
     const options: AskOption[] = [];
-    let ok = true;
-    for (const rawOption of q.options) {
-      const o = asRecord(rawOption);
+    let fault = '';
+    for (let j = 0; j < q.options.length; j++) {
+      const o = asRecord(q.options[j]);
       const label = o && asString(o.label);
       if (!label) {
-        ok = false;
+        // A label that is not a string cannot be matched against an answer.
+        fault = `${at} option ${j + 1} has no string label`;
         break;
       }
       options.push({ label, description: (o && asString(o.description)) || undefined });
     }
-    if (ok) out.push({ question, options });
+    if (fault) {
+      skipped.push(fault);
+      continue;
+    }
+    routable.push({ question, options });
   }
-  return out;
+  return { routable, skipped };
+}
+
+/** The routable steps alone, for callers that do not report faults. */
+export function readAskQuestions(input: unknown): AskQuestion[] {
+  return scanAskQuestions(input).routable;
 }
 
 /** The id a question carries in a batched request. */

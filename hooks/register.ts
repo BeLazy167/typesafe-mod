@@ -20,6 +20,7 @@ import {
   pickWinner,
   readAskQuestion,
   readAskQuestions,
+  scanAskQuestions,
   buildBatchRequest,
   readDecisions,
   isDecisionViewList,
@@ -122,10 +123,19 @@ export const register: Register = (on) => {
   // The agent's own this-or-that question is the general decision point. A
   // dialog may carry several, and they ride one request together.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
-    const questions = readAskQuestions((e as { questions?: unknown }).questions);
+    const scan = scanAskQuestions((e as { questions?: unknown }).questions);
+    const questions = scan.routable;
     // Nothing routable here. A multi-select step is not a Choice, and
     // approximating one would answer a question the agent did not ask.
-    if (questions.length === 0) return next(e);
+    if (questions.length === 0) {
+      $.ui.log(`typesafe-mod: not routed, ${scan.skipped.join('; ')}`);
+      return next(e);
+    }
+    // Some steps routed and some did not. Say which, so a dialog that is only
+    // half covered does not look like a dialog the router ignored.
+    if (scan.skipped.length > 0) {
+      $.ui.log(`typesafe-mod: skipped ${scan.skipped.length} of ${scan.skipped.length + questions.length}, ${scan.skipped.join('; ')}`);
+    }
 
     const off = await $.env.get('TYPESAFE_DECIDE_OFF');
     if (off) return next(e);
@@ -202,18 +212,19 @@ export const register: Register = (on) => {
       return next(e);
     }
 
-    const questions = readAskQuestions((e.props as { questions?: unknown }).questions);
-    if (questions.length === 0) {
-      $.ui.log('typesafe-mod: render skipped, dialog props did not parse');
+    const questions = scanAskQuestions((e.props as { questions?: unknown }).questions);
+    if (questions.routable.length === 0) {
+      $.ui.log(`typesafe-mod: render skipped, ${questions.skipped.join('; ')}`);
       return next(e);
     }
 
     // The engine caps what a hook may add around a dialog, so a batched dialog
     // gets bars for its first answered question only. The rest are in the
     // transcript, where text costs nothing.
+    const steps = questions.routable;
     let index = -1;
-    for (let i = 0; i < questions.length; i++) {
-      if (stored.some((v) => v.question === questions[i]?.question)) {
+    for (let i = 0; i < steps.length; i++) {
+      if (stored.some((v) => v.question === steps[i]?.question)) {
         index = i;
         break;
       }
@@ -223,7 +234,7 @@ export const register: Register = (on) => {
       return next(e);
     }
 
-    const question = questions[index]!;
+    const question = steps[index]!;
     const view = stored.find((v) => v.question === question.question)!;
 
     const el = $.ui.resolve(e);
@@ -243,8 +254,8 @@ export const register: Register = (on) => {
       );
 
     const title =
-      questions.length > 1
-        ? `TypeSafe decision router  (question ${index + 1} of ${questions.length})`
+      steps.length > 1
+        ? `TypeSafe decision router  (question ${index + 1} of ${steps.length})`
         : 'TypeSafe decision router';
 
     // The dialog is drawn by exactly one engine node, so this wraps core's own
