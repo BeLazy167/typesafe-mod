@@ -227,5 +227,5 @@ nothing.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 45 tests
+claude plugin test typesafe-skill-mod     # 48 tests
 ```

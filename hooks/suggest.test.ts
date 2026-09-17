@@ -1,16 +1,15 @@
 import { test, expect } from 'claude-code/testing';
 import {
   NONE,
-  buildDecisionRequest,
+  buildBatchRequest,
   buildRequest,
   parseRoster,
   pickDecision,
   pickWinner,
-  readAskQuestion,
   readFrontmatter,
   bar,
   rankOptions,
-  readDecision,
+  readDecisions,
 } from './suggest';
 
 const LIMITS = { maxSkills: 120, descriptionChars: 220 };
@@ -99,19 +98,6 @@ test('pickWinner stays quiet unless every gate passes', async () => {
   expect(pickWinner({ answers: {} }, GATES)).toBe(null);
 });
 
-test('only a single-select question is routable', async () => {
-  const one = [{ question: 'Fix or revert?', options: [{ label: 'Fix' }, { label: 'Revert' }] }];
-  expect(readAskQuestion(one)?.options.length).toBe(2);
-
-  // Multi-select is not a Choice.
-  expect(readAskQuestion([{ ...one[0], multiSelect: true }])).toBe(null);
-  // A batch of questions is not one decision.
-  expect(readAskQuestion([one[0], one[0]])).toBe(null);
-  // One option is not a choice.
-  expect(readAskQuestion([{ question: 'Only?', options: [{ label: 'Yes' }] }])).toBe(null);
-  expect(readAskQuestion(undefined)).toBe(null);
-});
-
 test('pickDecision refuses a label that was never offered', async () => {
   const question = {
     question: 'Fix or revert?',
@@ -126,14 +112,14 @@ test('pickDecision refuses a label that was never offered', async () => {
 });
 
 test('the decision request carries the agent options as criteria', async () => {
-  const body = buildDecisionRequest(
-    { question: 'Fix or revert?', options: [{ label: 'Fix', description: 'Finish it' }, { label: 'Revert' }] },
+  const body = buildBatchRequest(
+    [{ question: 'Fix or revert?', options: [{ label: 'Fix', description: 'Finish it' }, { label: 'Revert' }] }],
     'mid-task'
   );
   const questions = body.questions as Record<string, { criteria: Record<string, string> }>;
-  expect(questions.pick!.criteria.Fix).toBe('Finish it');
+  expect(questions.q0!.criteria.Fix).toBe('Finish it');
   // An option with no description still has to be selectable.
-  expect(questions.pick!.criteria.Revert).toBe('Revert');
+  expect(questions.q0!.criteria.Revert).toBe('Revert');
 });
 
 test('bar draws a proportional, fixed-width bar', async () => {
@@ -148,26 +134,26 @@ test('bar draws a proportional, fixed-width bar', async () => {
   expect(bar(NaN, 10).length).toBe(10);
 });
 
-test('readDecision reports the distribution even below the floor', async () => {
+test('readDecisions reports the distribution even below the floor', async () => {
   const q = { question: 'YAML or TOML?', options: [{ label: 'YAML' }, { label: 'TOML' }] };
   const body = {
-    answers: { pick: { choice: 'TOML', confidence: 0.4, probabilities: { TOML: 0.6, YAML: 0.4 } } },
+    answers: { q0: { choice: 'TOML', confidence: 0.4, probabilities: { TOML: 0.6, YAML: 0.4 } } },
   };
-  const view = readDecision(body, q, 0.75)!;
+  const view = readDecisions(body, [q], 0.75)[0]!;
   expect(view.choice).toBe('TOML');
   // Below 0.75, so the router reports but does not act.
   expect(view.wouldAnswer).toBe(false);
   expect(view.probabilities.TOML).toBe(0.6);
 
-  const sure = readDecision(
-    { answers: { pick: { choice: 'TOML', confidence: 0.9, probabilities: { TOML: 0.9, YAML: 0.1 } } } },
-    q, 0.75)!;
+  const sure = readDecisions(
+    { answers: { q0: { choice: 'TOML', confidence: 0.9, probabilities: { TOML: 0.9, YAML: 0.1 } } } },
+    [q], 0.75)[0]!;
   expect(sure.wouldAnswer).toBe(true);
 
   // A label nobody offered must never read as answerable.
-  const bogus = readDecision(
-    { answers: { pick: { choice: 'JSON', confidence: 0.99, probabilities: { JSON: 0.99 } } } },
-    q, 0.75)!;
+  const bogus = readDecisions(
+    { answers: { q0: { choice: 'JSON', confidence: 0.99, probabilities: { JSON: 0.99 } } } },
+    [q], 0.75)[0]!;
   expect(bogus.wouldAnswer).toBe(false);
 });
 

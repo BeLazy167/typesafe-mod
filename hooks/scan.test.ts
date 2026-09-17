@@ -26,6 +26,11 @@ test('each dropped step names itself and its fault', async () => {
     .toBe('step 1 offers 1, so there is nothing to choose between');
   expect(scanAskQuestions([{ question: 'q', options: [{ label: 'A' }, { label: 7 }] }]).skipped[0])
     .toBe('step 1 option 2 has no string label');
+  // An options array that is empty, and an option that is not an object at all.
+  expect(scanAskQuestions([{ question: 'q', options: [] }]).skipped[0])
+    .toBe('step 1 offers 0, so there is nothing to choose between');
+  expect(scanAskQuestions([{ question: 'q', options: [null, { label: 'B' }] }]).skipped[0])
+    .toBe('step 1 option 1 has no string label');
 });
 
 test('the step number points at the right step in a batch', async () => {

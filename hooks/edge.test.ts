@@ -4,7 +4,7 @@ import {
   MAX_PANEL_ROWS,
   NONE,
   bar,
-  buildDecisionRequest,
+  buildBatchRequest,
   buildRequest,
   isDecisionView,
   isSkillEntry,
@@ -12,8 +12,8 @@ import {
   pickDecision,
   pickWinner,
   rankOptions,
-  readAskQuestion,
-  readDecision,
+  readDecisions,
+  scanAskQuestions,
   readFrontmatter,
 } from './suggest';
 
@@ -24,51 +24,30 @@ const GATES = { minConfidence: 0.6, minNeedsSkill: 0.5 };
 // Input the model or the agent can hand us that must never crash a turn.
 // ---------------------------------------------------------------------------
 
-test('readAskQuestion refuses everything it cannot route', async () => {
-  const ok = [{ question: 'A or B?', options: [{ label: 'A' }, { label: 'B' }] }];
-  expect(readAskQuestion(ok)).toBeTruthy();
-
-  // Shapes that are not one single-select question.
-  expect(readAskQuestion(null)).toBe(null);
-  expect(readAskQuestion(undefined)).toBe(null);
-  expect(readAskQuestion([])).toBe(null);
-  expect(readAskQuestion('not an array')).toBe(null);
-  expect(readAskQuestion([ok[0], ok[0]])).toBe(null);
-  expect(readAskQuestion([{ ...ok[0], multiSelect: true }])).toBe(null);
-  expect(readAskQuestion([{ question: 'A?', options: [{ label: 'A' }] }])).toBe(null);
-  expect(readAskQuestion([{ question: 'A?', options: [] }])).toBe(null);
-  expect(readAskQuestion([{ options: [{ label: 'A' }, { label: 'B' }] }])).toBe(null);
-  expect(readAskQuestion([{ question: 'A?', options: 'nope' }])).toBe(null);
-  // A label that is not a string cannot be matched against an answer later.
-  expect(readAskQuestion([{ question: 'A?', options: [{ label: 1 }, { label: 'B' }] }])).toBe(null);
-  expect(readAskQuestion([{ question: 'A?', options: [null, { label: 'B' }] }])).toBe(null);
-  expect(readAskQuestion([42])).toBe(null);
-});
-
 test('a question with many options and no descriptions still routes', async () => {
-  const q = readAskQuestion([
+  const qs = scanAskQuestions([
     { question: 'Pick one', options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }] },
-  ]);
-  expect(q!.options.length).toBe(4);
-  const body = buildDecisionRequest(q!, 'situation');
+  ]).routable;
+  expect(qs[0]!.options.length).toBe(4);
+  const body = buildBatchRequest(qs, 'situation');
   const questions = body.questions as Record<string, { criteria: Record<string, string> }>;
   // An option with no description must still be selectable, so the label stands in.
-  expect(questions.pick!.criteria.A).toBe('A');
-  expect(Object.keys(questions.pick!.criteria).length).toBe(4);
+  expect(questions.q0!.criteria.A).toBe('A');
+  expect(Object.keys(questions.q0!.criteria).length).toBe(4);
 });
 
 test('question and label text with quotes and newlines survives serialisation', async () => {
-  const q = readAskQuestion([
+  const q = scanAskQuestions([
     {
       question: 'Use "smart" quotes,\nor plain ones?',
       options: [{ label: 'He said "yes"' }, { label: "it's fine\ttabbed" }],
     },
-  ])!;
-  const body = buildDecisionRequest(q, 'x');
+  ]).routable[0]!;
+  const body = buildBatchRequest([q], 'x');
   // Must round-trip as JSON, since this is what goes on the wire.
   const round = JSON.parse(JSON.stringify(body)) as typeof body;
   const questions = round.questions as Record<string, { criteria: Record<string, string> }>;
-  expect(Object.keys(questions.pick!.criteria)).toContain('He said "yes"');
+  expect(Object.keys(questions.q0!.criteria)).toContain('He said "yes"');
   expect(pickDecision({ answers: { pick: { choice: 'He said "yes"', confidence: 0.9 } } }, q, 0.75)!.label)
     .toBe('He said "yes"');
 });
@@ -100,19 +79,20 @@ test('a malformed or hostile response never yields a decision', async () => {
   ];
   for (const payload of bad) {
     expect(pickDecision(payload, q, 0.75)).toBe(null);
-    expect(readDecision(payload, q, 0.75)).toBe(null);
+    // The batch reader must be as strict, since it reads the same answers.
+    expect(readDecisions(payload, [q], 0.75)).toEqual([]);
   }
   // An option never offered must never be acted on, at any confidence.
   expect(pickDecision({ answers: { pick: { choice: 'C', confidence: 1 } } }, q, 0.75)).toBe(null);
-  expect(readDecision({ answers: { pick: { choice: 'C', confidence: 1 } } }, q, 0.75)!.wouldAnswer)
+  expect(readDecisions({ answers: { q0: { choice: 'C', confidence: 1 } } }, [q], 0.75)[0]!.wouldAnswer)
     .toBe(false);
 });
 
-test('readDecision tolerates missing or junk probabilities', async () => {
+test('readDecisions tolerates missing or junk probabilities', async () => {
   const q = { question: 'A or B?', options: [{ label: 'A' }, { label: 'B' }] };
-  const view = readDecision(
-    { answers: { pick: { choice: 'A', confidence: 0.9, probabilities: { A: 'x', B: 0.4 } } } },
-    q, 0.75)!;
+  const view = readDecisions(
+    { answers: { q0: { choice: 'A', confidence: 0.9, probabilities: { A: 'x', B: 0.4 } } } },
+    [q], 0.75)[0]!;
   // A non-numeric probability is dropped rather than rendered as NaN.
   expect(view.probabilities.A).toBe(undefined);
   expect(view.probabilities.B).toBe(0.4);
@@ -120,7 +100,7 @@ test('readDecision tolerates missing or junk probabilities', async () => {
   expect(ranked.length).toBe(2);
   for (const r of ranked) expect(Number.isFinite(r.p)).toBe(true);
 
-  const noProbs = readDecision({ answers: { pick: { choice: 'A', confidence: 0.9 } } }, q, 0.75)!;
+  const noProbs = readDecisions({ answers: { q0: { choice: 'A', confidence: 0.9 } } }, [q], 0.75)[0]!;
   expect(rankOptions(noProbs, q).every((r) => r.p === 0)).toBe(true);
 });
 
