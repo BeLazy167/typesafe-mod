@@ -76,7 +76,8 @@ drawing a bar per option, and the same numbers go to the transcript.
 
 The panel wraps core's dialog rather than replacing it. `AskUserQuestion` is
 drawn by exactly one engine node, so a tree without that node is refused and
-core draws its own.
+core draws its own. The engine also caps how much a hook may add around a
+dialog, so the panel draws at most four options, highest probability first.
 
 The transcript line carries the same information in one row:
 
@@ -181,5 +182,5 @@ a single Choice, and approximating them would answer a question you did not ask.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 12 tests
+claude plugin test typesafe-skill-mod     # 30 tests
 ```

@@ -4,6 +4,7 @@ import {
   DECISION_DEFAULTS,
   DECISION_KEY,
   ROSTER_KEY,
+  MAX_PANEL_ROWS,
   SCAN_COMMAND,
   bar,
   isDecisionView,
@@ -212,45 +213,35 @@ export const register: Register = (on) => {
 
     const el = $.ui.resolve(e);
     const width = Math.max(16, Math.min((e.viewport?.columns ?? 80) - 28, 32));
-    const rows = rankOptions(stored, question).map((row) =>
-      el.Box({
+
+    // The engine refuses a panel of more than 12 elements around the dialog,
+    // so each option is one Text rather than a Box holding two. That leaves
+    // room for the title, the footer and core's own node.
+    const ranked = rankOptions(stored, question).slice(0, MAX_PANEL_ROWS);
+    const rows = ranked.map((row) =>
+      el.Text({
         key: row.label,
-        flexDirection: 'row',
-        gap: 1,
-        children: [
-          el.Text({
-            color: row.label === stored.choice ? 'green' : 'gray',
-            children: bar(row.p, width),
-          }),
-          el.Text({
-            bold: row.label === stored.choice,
-            children: `${row.p.toFixed(2)}  ${row.label}`,
-          }),
-        ],
+        color: row.label === stored.choice ? 'green' : 'gray',
+        bold: row.label === stored.choice,
+        children: `${bar(row.p, width)} ${row.p.toFixed(2)}  ${row.label}`,
       })
     );
 
-    // The dialog is drawn by exactly one engine node, so this wraps core's
-    // own tree rather than replacing it. Returning a tree with no engine node
-    // is refused and core draws its own.
+    // The dialog is drawn by exactly one engine node, so this wraps core's own
+    // tree rather than replacing it. A tree with no engine node is refused.
     const core = await next(e);
 
     return el.Box({
       flexDirection: 'column',
+      paddingX: 1,
       children: [
-        el.Box({
-          flexDirection: 'column',
-          paddingX: 1,
-          children: [
-            el.Text({ bold: true, color: 'cyan', children: 'TypeSafe decision router' }),
-            el.Box({ flexDirection: 'column', children: rows }),
-            el.Text({
-              dimColor: true,
-              children: stored.wouldAnswer
-                ? `confidence ${stored.confidence.toFixed(2)}, over the 0.75 floor`
-                : `confidence ${stored.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`,
-            }),
-          ],
+        el.Text({ bold: true, color: 'cyan', children: 'TypeSafe decision router' }),
+        ...rows,
+        el.Text({
+          dimColor: true,
+          children: stored.wouldAnswer
+            ? `confidence ${stored.confidence.toFixed(2)}, over the 0.75 floor`
+            : `confidence ${stored.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`,
         }),
         core,
       ],
