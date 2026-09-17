@@ -62,8 +62,23 @@ export TYPESAFE_API_KEY="your-key-here"
 | `TYPESAFE_DECIDE_OFF` | Set to any value to stop Jev answering your questions. |
 | `TYPESAFE_AUTO_ANSWER` | Set to `1` to let Jev answer the dialog outright instead of advising. See the warning below. |
 
-By default the router advises. The dialog opens as usual, and the probability
-for each option goes to the transcript beside it.
+By default the router advises. The dialog opens as usual, with a panel above it
+drawing a bar per option, and the same numbers go to the transcript.
+
+```
+  TypeSafe decision router
+
+  ███████████████████████░░░░░░░ 0.73  Fix forward
+  ████████░░░░░░░░░░░░░░░░░░░░░░ 0.27  Roll back
+
+  confidence 0.47, under the 0.75 floor, so this one is yours
+```
+
+The panel wraps core's dialog rather than replacing it. `AskUserQuestion` is
+drawn by exactly one engine node, so a tree without that node is refused and
+core draws its own.
+
+The transcript line carries the same information in one row:
 
 ```
 typesafe-mod: Jev leans Fix forward (Fix forward 0.73, Roll back 0.27),
@@ -166,5 +181,5 @@ a single Choice, and approximating them would answer a question you did not ask.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 10 tests
+claude plugin test typesafe-skill-mod     # 12 tests
 ```

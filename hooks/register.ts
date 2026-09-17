@@ -211,43 +211,49 @@ export const register: Register = (on) => {
     }
 
     const el = $.ui.resolve(e);
-    const Box = el.Box;
-    const Text = el.Text;
-    const width = Math.max(24, Math.min((e.viewport?.columns ?? 80) - 24, 40));
-    const ranked = rankOptions(stored, question);
-
-    return h(
-      Box,
-      { flexDirection: 'column', gap: 1, paddingX: 1 },
-      h(Text, { bold: true, color: 'cyan' }, 'TypeSafe decision router'),
-      h(Text, { wrap: 'wrap' }, stored.question),
-      h(
-        Box,
-        { flexDirection: 'column' },
-        ...ranked.map((row) =>
-          h(
-            Box,
-            { flexDirection: 'row', gap: 1, key: row.label },
-            h(
-              Text,
-              { color: row.label === stored.choice ? 'green' : 'gray' },
-              bar(row.p, width)
-            ),
-            h(
-              Text,
-              { bold: row.label === stored.choice },
-              `${row.p.toFixed(2)}  ${row.label}`
-            )
-          )
-        )
-      ),
-      h(
-        Text,
-        { dimColor: true },
-        stored.wouldAnswer
-          ? `confidence ${stored.confidence.toFixed(2)}, above the 0.75 floor, so the router would answer this itself`
-          : `confidence ${stored.confidence.toFixed(2)}, below the 0.75 floor, so this one is yours`
-      )
+    const width = Math.max(16, Math.min((e.viewport?.columns ?? 80) - 28, 32));
+    const rows = rankOptions(stored, question).map((row) =>
+      el.Box({
+        key: row.label,
+        flexDirection: 'row',
+        gap: 1,
+        children: [
+          el.Text({
+            color: row.label === stored.choice ? 'green' : 'gray',
+            children: bar(row.p, width),
+          }),
+          el.Text({
+            bold: row.label === stored.choice,
+            children: `${row.p.toFixed(2)}  ${row.label}`,
+          }),
+        ],
+      })
     );
+
+    // The dialog is drawn by exactly one engine node, so this wraps core's
+    // own tree rather than replacing it. Returning a tree with no engine node
+    // is refused and core draws its own.
+    const core = await next(e);
+
+    return el.Box({
+      flexDirection: 'column',
+      children: [
+        el.Box({
+          flexDirection: 'column',
+          paddingX: 1,
+          children: [
+            el.Text({ bold: true, color: 'cyan', children: 'TypeSafe decision router' }),
+            el.Box({ flexDirection: 'column', children: rows }),
+            el.Text({
+              dimColor: true,
+              children: stored.wouldAnswer
+                ? `confidence ${stored.confidence.toFixed(2)}, over the 0.75 floor`
+                : `confidence ${stored.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`,
+            }),
+          ],
+        }),
+        core,
+      ],
+    });
   });
 };
