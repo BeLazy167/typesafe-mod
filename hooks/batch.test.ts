@@ -122,7 +122,7 @@ test('each question gets its own transcript line', async () => {
   expect(b).toContain('under the floor, so this one is yours');
 });
 
-test('the panel draws the first answered step and says which it is', async ($, on) => {
+test('a batched dialog gets one row per question, not one question in detail', async ($, on) => {
   const views = [
     { question: VERSION, choice: 'Tag v0.3.0 as-is', confidence: 0.91, wouldAnswer: true,
       probabilities: { 'Tag v0.3.0 as-is': 0.95, 'Bump to 0.4.0': 0.05 } },
@@ -132,20 +132,64 @@ test('the panel draws the first answered step and says which it is', async ($, o
   mock.store(on, { [DECISION_KEY]: views });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
 
-  const tree = await $.ui.render({
+  const json = JSON.stringify(await $.ui.render({
     surface: 'terminal', component: 'AskUserQuestion', requestId: 'r',
     viewport: { columns: 100, rows: 40 },
     props: { tool: 'AskUserQuestion', questions: dialog },
-  });
-  const json = JSON.stringify(tree);
+  }));
 
-  // Drawn rather than refused, and it names which step it is showing.
-  expect(json).toContain('question 1 of 2');
-  expect(json).toContain('0.95  Tag v0.3.0 as-is');
-  // The second step's bars are not drawn; its line is in the transcript.
-  expect(json).not.toContain('Since the version bump');
-  // Still exactly one engine node, whatever the batch size.
+  // One row per question. The render event never says which step is on screen,
+  // so drawing one question's options would be wrong on every other step.
+  const bars = json.match(/[\u2588\u2591]+/g) ?? [];
+  expect(bars.length).toBe(2);
+  expect(json).toContain('2 questions, one row each');
+  // Both winners appear, so paging between steps never contradicts the panel.
+  expect(json).toContain('Tag v0.3.0 as-is');
+  expect(json).toContain('Since the last tag');
+  // Both confidences appear, and only one cleared the floor.
+  expect(json).toContain('0.91');
+  expect(json).toContain('0.42');
+  expect(json).toContain('1 of 2 cleared the 0.75 floor');
+  expect(json.split('\u2713').length - 1).toBe(1);
   expect(json.split('"type":"engine"').length - 1).toBe(1);
+});
+
+test('a lone question still gets its options drawn in full', async ($, on) => {
+  const view = { question: VERSION, choice: 'Tag v0.3.0 as-is', confidence: 0.91, wouldAnswer: true,
+    probabilities: { 'Tag v0.3.0 as-is': 0.95, 'Bump to 0.4.0': 0.05 } };
+  mock.store(on, { [DECISION_KEY]: [view] });
+  on('ui.render', () => ({ type: 'engine', ref: 0 }));
+
+  const json = JSON.stringify(await $.ui.render({
+    surface: 'terminal', component: 'AskUserQuestion', requestId: 'r',
+    viewport: { columns: 100, rows: 40 },
+    props: { tool: 'AskUserQuestion', questions: [dialog[0]] },
+  }));
+  // A single question has no ambiguity about which step is showing, so it keeps
+  // the per-option bars.
+  const bars = json.match(/[\u2588\u2591]+/g) ?? [];
+  expect(bars.length).toBe(2);
+  expect(json).toContain('0.95  Tag v0.3.0 as-is');
+  expect(json).toContain('0.05  Bump to 0.4.0');
+  expect(json).not.toContain('one row each');
+});
+
+test('every question shows even when none cleared the floor', async ($, on) => {
+  const views = [
+    { question: VERSION, choice: 'Tag v0.3.0 as-is', confidence: 0.3, wouldAnswer: false,
+      probabilities: { 'Tag v0.3.0 as-is': 0.55, 'Bump to 0.4.0': 0.45 } },
+    { question: SCOPE, choice: 'Since the last tag', confidence: 0.2, wouldAnswer: false,
+      probabilities: { 'Since the last tag': 0.52, 'Since the version bump': 0.48 } },
+  ];
+  mock.store(on, { [DECISION_KEY]: views });
+  on('ui.render', () => ({ type: 'engine', ref: 0 }));
+  const json = JSON.stringify(await $.ui.render({
+    surface: 'terminal', component: 'AskUserQuestion', requestId: 'r',
+    viewport: { columns: 100, rows: 40 },
+    props: { tool: 'AskUserQuestion', questions: dialog },
+  }));
+  expect(json).toContain('none cleared the 0.75 floor');
+  expect(json.split('\u2713').length - 1).toBe(0);
 });
 
 test('a dialog with no matching decision is left alone', async ($, on) => {

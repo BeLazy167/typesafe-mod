@@ -87,10 +87,27 @@ drawing a bar per option, and the same numbers go to the transcript.
   confidence 0.47, under the 0.75 floor, so this one is yours
 ```
 
+A dialog with several questions gets one row each instead, because the render
+event never says which step is on screen:
+
+```
+  TypeSafe decision router  (4 questions, one row each)
+
+  ████████████████ 0.97  No pattern       0.95 ✓
+  ███████████░░░░░ 0.71  Depends on size  0.57
+  ██████████░░░░░░ 0.64  Both             0.46
+  ████████░░░░░░░░ 0.50  Rebase           0.25
+
+  1 of 4 cleared the 0.75 floor, marked with a tick
+```
+
+Drawing one question's options would pin the panel to that question while you
+page through the rest, showing step one's numbers above step three.
+
 The panel wraps core's dialog rather than replacing it. `AskUserQuestion` is
 drawn by exactly one engine node, so a tree without that node is refused and
 core draws its own. The engine also caps how much a hook may add around a
-dialog, so the panel draws at most four options, highest probability first.
+dialog, so the panel draws at most four rows.
 
 The transcript line carries the same information in one row:
 
@@ -210,5 +227,5 @@ nothing.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 43 tests
+claude plugin test typesafe-skill-mod     # 45 tests
 ```

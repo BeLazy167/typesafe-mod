@@ -646,3 +646,42 @@ export function decisionLine(view: DecisionView, q: AskQuestion, prefix = ''): s
     ? `typesafe-mod: ${prefix}Jev picks ${view.choice} (${spread}), confidence ${view.confidence.toFixed(2)}`
     : `typesafe-mod: ${prefix}Jev leans ${view.choice} (${spread}), but confidence ${view.confidence.toFixed(2)} is under the floor, so this one is yours`;
 }
+
+/**
+ * One compact row summarising what Jev said about one question.
+ *
+ * A batched dialog draws one of these per question. The render event does not
+ * say which step the dialog is currently showing, so drawing one question's
+ * option bars would pin the panel to that question while the reader pages
+ * through the others. A row per question is true whatever step is on screen.
+ *
+ * @param view The decision for this question.
+ * @param barWidth Cells for the winner's probability bar.
+ * @param labelWidth Cells the label is padded to, so the columns line up.
+ */
+export function summaryRow(view: DecisionView, barWidth: number, labelWidth: number): string {
+  const top = Object.values(view.probabilities).reduce((a, b) => Math.max(a, b), 0);
+  const label =
+    view.choice.length > labelWidth
+      ? `${view.choice.slice(0, Math.max(0, labelWidth - 1))}…`
+      : view.choice.padEnd(labelWidth);
+  const mark = view.wouldAnswer ? ' ✓' : '';
+  return `${bar(top, barWidth)} ${top.toFixed(2)}  ${label}  ${view.confidence.toFixed(2)}${mark}`;
+}
+
+/**
+ * Pair each question in a dialog with its decision, dropping the unanswered.
+ *
+ * Order follows the dialog, so row one is step one.
+ */
+export function pairDecisions(
+  questions: readonly AskQuestion[],
+  views: readonly DecisionView[]
+): Array<{ question: AskQuestion; view: DecisionView }> {
+  const out: Array<{ question: AskQuestion; view: DecisionView }> = [];
+  for (const question of questions) {
+    const view = views.find((v) => v.question === question.question);
+    if (view) out.push({ question, view });
+  }
+  return out;
+}
