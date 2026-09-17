@@ -32,7 +32,7 @@ const render = ($: { ui: { render: (i: unknown) => Promise<unknown> } }) =>
   });
 
 test('the hook draws its own tree, not the engine default', async ($, on) => {
-  mock.store(on, { [DECISION_KEY]: view });
+  mock.store(on, { [DECISION_KEY]: [view] });
   // Stand in for core beneath the plugins: the one engine node the dialog needs.
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
   const tree = await render($);

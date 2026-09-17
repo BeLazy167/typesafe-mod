@@ -13,10 +13,23 @@ allowing or blocking one.
 ## What it does
 
 **Decision router, on `tool.call` for `AskUserQuestion`.** When the agent stops
-to ask you a this-or-that question, the hook sends that question to Jev and puts
-the probability for each option in the transcript beside the dialog. You still
+to ask you a this-or-that question, the hook sends it to Jev and puts the
+probability for each option in the transcript beside the dialog. You still
 choose. `TYPESAFE_AUTO_ANSWER=1` lets Jev answer instead, so the dialog never
 opens. This runs by default.
+
+A dialog may carry several questions, and they all ride one request. Jev answers
+independent questions in parallel, so two steps cost one call. Each gets its own
+transcript line, and each is judged on its own: it can be confident about one
+step and hand the next back to you.
+
+```
+typesafe-mod: (1/2) Jev picks Tag v0.3.0 as-is (Tag v0.3.0 as-is 0.89,
+Bump to 0.4.0 0.10, Backfill v0.2.0 0.01), confidence 0.84
+typesafe-mod: (2/2) Jev leans Everything since the first commit
+(Everything 0.51, Only since the bump 0.49), but confidence 0.02 is under
+the floor, so this one is yours
+```
 
 **Skill router, on `prompt.submit`.** One request ranks every installed skill
 against your prompt and asks whether the turn needs a procedure at all. A
@@ -165,8 +178,14 @@ would render normally, but core validates it against the tool's output schema
 and the generated types declare none for `AskUserQuestion`. That is why advising
 is the default.
 
-The router skips multi-select questions and batches of questions. Neither one is
-a single Choice, and approximating them would answer a question you did not ask.
+The router skips multi-select steps, because a multi-select answer is not a
+Choice and approximating one would answer a question you did not ask. The other
+steps in the same dialog still route.
+
+The panel draws bars for the first answered step only. The engine caps what a
+hook may add around a dialog, so a second set of bars would be refused and core
+would draw its own. Every step still gets a transcript line, where text costs
+nothing.
 
 ## Known limits
 
@@ -182,5 +201,5 @@ a single Choice, and approximating them would answer a question you did not ask.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 30 tests
+claude plugin test typesafe-skill-mod     # 38 tests
 ```
