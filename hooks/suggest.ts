@@ -353,3 +353,89 @@ export function decisionNote(q: AskQuestion, d: Decision): string {
     `Proceed with that option. Ask the user directly only if this turns out not to fit.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Show-your-work mode: draw Jev's distribution over the dialog.
+// ---------------------------------------------------------------------------
+
+/** Slot holding the last decision, for the render hook to read. */
+export const DECISION_KEY = 'last-decision.v1';
+
+/** A decision plus the full distribution behind it. */
+export type DecisionView = {
+  question: string;
+  probabilities: Record<string, number>;
+  choice: string;
+  confidence: number;
+  /** True when the router would have answered without asking. */
+  wouldAnswer: boolean;
+};
+
+/**
+ * Read the whole distribution out of a response, whatever the confidence.
+ *
+ * `pickDecision` decides whether to act. This one only reports, so the dialog
+ * can show the numbers even when the router stays out of the way.
+ */
+export function readDecision(
+  payload: unknown,
+  q: AskQuestion,
+  minConfidence: number = DECISION_DEFAULTS.minConfidence
+): DecisionView | null {
+  const root = asRecord(payload);
+  const answers = root && asRecord(root.answers);
+  const pick = answers && asRecord(answers.pick);
+  if (!pick) return null;
+
+  const choice = asString(pick.choice);
+  const confidence = asNumber(pick.confidence);
+  if (choice === null || confidence === null) return null;
+
+  const probabilities: Record<string, number> = {};
+  const raw = asRecord(pick.probabilities);
+  if (raw) {
+    for (const [label, value] of Object.entries(raw)) {
+      const n = asNumber(value);
+      if (n !== null) probabilities[label] = n;
+    }
+  }
+  const offered = q.options.some((o) => o.label === choice);
+  return {
+    question: q.question,
+    probabilities,
+    choice,
+    confidence,
+    wouldAnswer: offered && confidence >= minConfidence,
+  };
+}
+
+/**
+ * Draw a proportional bar.
+ *
+ * @param p Probability from 0 to 1. Values outside that range are clamped.
+ * @param width Total cells the bar occupies.
+ */
+export function bar(p: number, width: number): string {
+  const safe = Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
+  const filled = Math.round(safe * width);
+  return '█'.repeat(filled) + '░'.repeat(Math.max(width - filled, 0));
+}
+
+/** Options ordered by probability, highest first, for display. */
+export function rankOptions(view: DecisionView, q: AskQuestion): Array<{ label: string; p: number }> {
+  return q.options
+    .map((o) => ({ label: o.label, p: view.probabilities[o.label] ?? 0 }))
+    .sort((a, b) => b.p - a.p);
+}
+
+/** Narrows a DecisionView recovered from `$.store`. */
+export function isDecisionView(v: unknown): v is DecisionView {
+  const r = asRecord(v);
+  return (
+    r !== null &&
+    typeof r.question === 'string' &&
+    typeof r.choice === 'string' &&
+    typeof r.confidence === 'number' &&
+    asRecord(r.probabilities) !== null
+  );
+}

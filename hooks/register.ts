@@ -2,8 +2,13 @@ import type { Register } from 'claude-code';
 import {
   DEFAULTS,
   DECISION_DEFAULTS,
+  DECISION_KEY,
   ROSTER_KEY,
   SCAN_COMMAND,
+  bar,
+  isDecisionView,
+  rankOptions,
+  readDecision,
   buildDecisionRequest,
   buildRequest,
   contextBlock,
@@ -138,7 +143,18 @@ export const register: Register = (on) => {
       ]);
 
       if (res !== null && res.ok) {
-        const decision = pickDecision(JSON.parse(res.text), question, DECISION_DEFAULTS.minConfidence);
+        const payload: unknown = JSON.parse(res.text);
+
+        // Show-your-work mode. Let the dialog open and hand the render hook
+        // the distribution, so the numbers are visible instead of a log line.
+        const show = await $.env.get('TYPESAFE_SHOW_WORK');
+        if (show) {
+          const view = readDecision(payload, question, DECISION_DEFAULTS.minConfidence);
+          if (view) await $.store.set(DECISION_KEY, view);
+          return next(e);
+        }
+
+        const decision = pickDecision(payload, question, DECISION_DEFAULTS.minConfidence);
         if (decision) {
           $.ui.log(
             `typesafe-mod: decided "${decision.label}" (${decision.confidence.toFixed(2)}) without asking`
@@ -153,7 +169,59 @@ export const register: Register = (on) => {
       $.ui.log(`typesafe-mod: decision router unavailable (${String(err)})`);
     }
 
-    // Not confident, unreachable, or switched off: the user gets asked.
+    // Not confident, unreachable, or switched off, so the user gets asked.
     return next(e);
+  });
+
+  // Draws Jev's distribution over the question dialog. Only fires in
+  // show-your-work mode, because otherwise the hook answers the tool call
+  // and no dialog is ever drawn.
+  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
+    const stored = await $.store.get(DECISION_KEY);
+    if (!isDecisionView(stored)) return next(e);
+
+    const question = readAskQuestion((e.props as { questions?: unknown }).questions);
+    // A stale decision belongs to an earlier dialog, so draw the engine's own.
+    if (!question || question.question !== stored.question) return next(e);
+
+    const el = $.ui.resolve(e);
+    const Box = el.Box;
+    const Text = el.Text;
+    const width = Math.max(24, Math.min((e.viewport?.columns ?? 80) - 24, 40));
+    const ranked = rankOptions(stored, question);
+
+    return h(
+      Box,
+      { flexDirection: 'column', gap: 1, paddingX: 1 },
+      h(Text, { bold: true, color: 'cyan' }, 'TypeSafe decision router'),
+      h(Text, { wrap: 'wrap' }, stored.question),
+      h(
+        Box,
+        { flexDirection: 'column' },
+        ...ranked.map((row) =>
+          h(
+            Box,
+            { flexDirection: 'row', gap: 1, key: row.label },
+            h(
+              Text,
+              { color: row.label === stored.choice ? 'green' : 'gray' },
+              bar(row.p, width)
+            ),
+            h(
+              Text,
+              { bold: row.label === stored.choice },
+              `${row.p.toFixed(2)}  ${row.label}`
+            )
+          )
+        )
+      ),
+      h(
+        Text,
+        { dimColor: true },
+        stored.wouldAnswer
+          ? `confidence ${stored.confidence.toFixed(2)}, above the 0.75 floor, so the router would answer this itself`
+          : `confidence ${stored.confidence.toFixed(2)}, below the 0.75 floor, so this one is yours`
+      )
+    );
   });
 };

@@ -1,11 +1,15 @@
 {
   "name": "typesafe-mod",
-  "owner": { "name": "BeLazy167", "url": "https://github.com/BeLazy167" },
+  "owner": {
+    "name": "BeLazy167",
+    "url": "https://github.com/BeLazy167"
+  },
   "plugins": [
     {
       "name": "typesafe-mod",
       "source": "./",
       "description": "Skill router and decision router backed by TypeSafe System One."
     }
-  ]
+  ],
+  "description": "Function hooks that send agent decisions to TypeSafe's Jev model."
 }

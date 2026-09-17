@@ -59,6 +59,24 @@ export TYPESAFE_API_KEY="your-key-here"
 | `TYPESAFE_API_KEY` | Unset, and neither router runs. |
 | `TYPESAFE_SKILL_ROUTER` | Set to `1` to turn the skill router on. Off otherwise. |
 | `TYPESAFE_DECIDE_OFF` | Set to any value to stop Jev answering your questions. |
+| `TYPESAFE_SHOW_WORK` | Set to any value to let the dialog open and draw Jev's probability for each option. You still choose. |
+
+Show-your-work mode exists because the router is invisible when it works. It
+answers the tool call, so nothing is drawn and one line goes to the transcript.
+With `TYPESAFE_SHOW_WORK=1` the dialog opens as usual, and a `ui.render` hook
+draws a bar per option with the probability Jev gave it, the pick in green, and
+whether that pick cleared the 0.75 floor.
+
+```
+  TypeSafe decision router
+
+  Should the new config file be YAML or TOML?
+
+  █████████████████████████████░░░ 0.92  YAML
+  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 0.08  TOML
+
+  confidence 0.83, above the 0.75 floor, so the router would answer this itself
+```
 
 Both thresholds live in `hooks/suggest.ts`. `DEFAULTS.minConfidence` is 0.6 for
 the skill hint. `DECISION_DEFAULTS.minConfidence` is 0.75 for answering instead

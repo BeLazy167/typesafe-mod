@@ -8,6 +8,9 @@ import {
   pickWinner,
   readAskQuestion,
   readFrontmatter,
+  bar,
+  rankOptions,
+  readDecision,
 } from './suggest';
 
 const LIMITS = { maxSkills: 120, descriptionChars: 220 };
@@ -131,4 +134,49 @@ test('the decision request carries the agent options as criteria', async () => {
   expect(questions.pick!.criteria.Fix).toBe('Finish it');
   // An option with no description still has to be selectable.
   expect(questions.pick!.criteria.Revert).toBe('Revert');
+});
+
+test('bar draws a proportional, fixed-width bar', async () => {
+  expect(bar(0, 10)).toBe('░'.repeat(10));
+  expect(bar(1, 10)).toBe('█'.repeat(10));
+  expect(bar(0.5, 10)).toBe('█'.repeat(5) + '░'.repeat(5));
+  // Width must hold whatever the input, or the rows stop lining up.
+  expect(bar(0.37, 20).length).toBe(20);
+  // Out-of-range and non-finite input must not produce a ragged row.
+  expect(bar(1.8, 10).length).toBe(10);
+  expect(bar(-1, 10)).toBe('░'.repeat(10));
+  expect(bar(NaN, 10).length).toBe(10);
+});
+
+test('readDecision reports the distribution even below the floor', async () => {
+  const q = { question: 'YAML or TOML?', options: [{ label: 'YAML' }, { label: 'TOML' }] };
+  const body = {
+    answers: { pick: { choice: 'TOML', confidence: 0.4, probabilities: { TOML: 0.6, YAML: 0.4 } } },
+  };
+  const view = readDecision(body, q, 0.75)!;
+  expect(view.choice).toBe('TOML');
+  // Below 0.75, so the router reports but does not act.
+  expect(view.wouldAnswer).toBe(false);
+  expect(view.probabilities.TOML).toBe(0.6);
+
+  const sure = readDecision(
+    { answers: { pick: { choice: 'TOML', confidence: 0.9, probabilities: { TOML: 0.9, YAML: 0.1 } } } },
+    q, 0.75)!;
+  expect(sure.wouldAnswer).toBe(true);
+
+  // A label nobody offered must never read as answerable.
+  const bogus = readDecision(
+    { answers: { pick: { choice: 'JSON', confidence: 0.99, probabilities: { JSON: 0.99 } } } },
+    q, 0.75)!;
+  expect(bogus.wouldAnswer).toBe(false);
+});
+
+test('rankOptions orders by probability and keeps unscored options', async () => {
+  const q = { question: 'q', options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }] };
+  const view = { question: 'q', choice: 'B', confidence: 0.8, wouldAnswer: true,
+    probabilities: { A: 0.2, B: 0.7 } };
+  const ranked = rankOptions(view, q);
+  expect(ranked.map((r) => r.label).join(',')).toBe('B,A,C');
+  // An option the model never scored still gets a row, at zero.
+  expect(ranked[2]!.p).toBe(0);
 });
