@@ -152,26 +152,33 @@ export const register: Register = (on) => {
         if (view) await $.store.set(DECISION_KEY, view);
         else await $.store.delete(DECISION_KEY);
 
-        // Show-your-work mode lets the dialog open so the numbers are drawn.
-        const show = await $.env.get('TYPESAFE_SHOW_WORK');
-        if (show) {
+        // Advisory by default. The dialog opens, and the recommendation goes
+        // to the transcript beside it.
+        //
+        // The alternative is to answer the call outright, which needs `deny`,
+        // and the engine defines `deny` as "the model receives the text as an
+        // error result". A working decision then renders red as a failure, and
+        // the agent argues with it. Answering with `{ result }` instead would
+        // need this tool's output schema, which the generated types do not
+        // declare, and a guessed shape breaks the dialog. So the interrupting
+        // version is opt-in, and the readable one is the default.
+        const auto = await $.env.get('TYPESAFE_AUTO_ANSWER');
+        if (auto) {
+          const decision = pickDecision(payload, question, DECISION_DEFAULTS.minConfidence);
+          if (decision) {
+            $.ui.log(
+              `typesafe-mod: decided "${decision.label}" (${decision.confidence.toFixed(2)}) without asking`
+            );
+            return { deny: decisionNote(question, decision) };
+          }
+        } else if (view) {
+          const ranked = rankOptions(view, question);
+          const spread = ranked.map((r) => `${r.label} ${r.p.toFixed(2)}`).join(', ');
           $.ui.log(
-            view
-              ? `typesafe-mod: show-work, ${view.choice} at ${view.confidence.toFixed(2)}`
-              : 'typesafe-mod: show-work, but no decision could be read'
+            view.wouldAnswer
+              ? `typesafe-mod: Jev picks ${view.choice} (${spread}), confidence ${view.confidence.toFixed(2)}`
+              : `typesafe-mod: Jev leans ${view.choice} (${spread}), but confidence ${view.confidence.toFixed(2)} is under the floor, so this one is yours`
           );
-          return next(e);
-        }
-
-        const decision = pickDecision(payload, question, DECISION_DEFAULTS.minConfidence);
-        if (decision) {
-          $.ui.log(
-            `typesafe-mod: decided "${decision.label}" (${decision.confidence.toFixed(2)}) without asking`
-          );
-          // Answering alone, before next: the dialog never opens. `deny` is the
-          // documented way to return text the agent reads, and the tool's own
-          // result schema is not declared, so it is not guessed at here.
-          return { deny: decisionNote(question, decision) };
         }
       }
     } catch (err) {

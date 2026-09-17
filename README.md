@@ -59,24 +59,23 @@ export TYPESAFE_API_KEY="your-key-here"
 | `TYPESAFE_API_KEY` | Unset, and neither router runs. |
 | `TYPESAFE_SKILL_ROUTER` | Set to `1` to turn the skill router on. Off otherwise. |
 | `TYPESAFE_DECIDE_OFF` | Set to any value to stop Jev answering your questions. |
-| `TYPESAFE_SHOW_WORK` | Set to any value to let the dialog open and draw Jev's probability for each option. You still choose. |
+| `TYPESAFE_AUTO_ANSWER` | Set to `1` to let Jev answer the dialog outright instead of advising. See the warning below. |
 
-Show-your-work mode exists because the router is invisible when it works. It
-answers the tool call, so nothing is drawn and one line goes to the transcript.
-With `TYPESAFE_SHOW_WORK=1` the dialog opens as usual, and a `ui.render` hook
-draws a bar per option with the probability Jev gave it, the pick in green, and
-whether that pick cleared the 0.75 floor.
+By default the router advises. The dialog opens as usual, and the probability
+for each option goes to the transcript beside it.
 
 ```
-  TypeSafe decision router
-
-  Should the new config file be YAML or TOML?
-
-  █████████████████████████████░░░ 0.92  YAML
-  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 0.08  TOML
-
-  confidence 0.83, above the 0.75 floor, so the router would answer this itself
+typesafe-mod: Jev leans Fix forward (Fix forward 0.73, Roll back 0.27),
+but confidence 0.47 is under the floor, so this one is yours
 ```
+
+`TYPESAFE_AUTO_ANSWER=1` makes the router answer the call instead, so the
+dialog never opens. Know the cost before you turn it on. Answering a tool call
+from a hook requires `deny`, and the engine defines `deny` as "the model
+receives the text as an error result". So a decision that worked renders in red
+as a failure, and the agent may argue with it rather than proceed. Answering
+with `{ result }` would avoid that, but it needs this tool's output schema,
+which the generated types do not declare.
 
 Both thresholds live in `hooks/suggest.ts`. `DEFAULTS.minConfidence` is 0.6 for
 the skill hint. `DECISION_DEFAULTS.minConfidence` is 0.75 for answering instead
