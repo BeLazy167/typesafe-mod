@@ -271,63 +271,6 @@ export type Decision = { label: string; confidence: number };
 export const DECISION_DEFAULTS = { minConfidence: 0.75 };
 
 /**
- * Read the single-select question out of an AskUserQuestion call, if there is
- * exactly one and it is routable.
- *
- * The tool's `questions` is typed `unknown[]`, so every field is checked. A
- * multi-select question is not a Choice and a batch of questions is not one
- * decision; both fall through to the human rather than being approximated.
- *
- * @param input The tool call's `questions` value.
- * @returns The one routable question, or null to leave the call alone.
- */
-export function readAskQuestion(input: unknown): AskQuestion | null {
-  if (!Array.isArray(input) || input.length !== 1) return null;
-  const q = asRecord(input[0]);
-  if (!q) return null;
-  if (q.multiSelect === true) return null;
-
-  const question = asString(q.question);
-  if (!question || !Array.isArray(q.options) || q.options.length < 2) return null;
-
-  const options: AskOption[] = [];
-  for (const raw of q.options) {
-    const o = asRecord(raw);
-    const label = o && asString(o.label);
-    if (!label) return null;
-    options.push({ label, description: (o && asString(o.description)) || undefined });
-  }
-  return { question, options };
-}
-
-/**
- * Build the TypeSafe request that answers one AskUserQuestion.
- *
- * The agent's own question text becomes the instructions and its options
- * become the criteria, so the judgment stays exactly the one the agent posed.
- */
-export function buildDecisionRequest(
-  q: AskQuestion,
-  situation: string,
-  model: string = DEFAULTS.model
-): Record<string, unknown> {
-  const criteria: Record<string, string> = {};
-  for (const o of q.options) criteria[o.label] = o.description ?? o.label;
-
-  return {
-    model,
-    state: { situation, question: q.question },
-    questions: {
-      pick: {
-        type: 'choice',
-        instructions: `${q.question} Decide from \`state.question\` and \`state.situation\`, judging each option only by its description.`,
-        criteria,
-      },
-    },
-  };
-}
-
-/**
  * Read a decision out of a TypeSafe response, or defer to the human.
  *
  * Returns null below the confidence floor. Deferring costs one dialog; a
@@ -388,44 +331,6 @@ export type DecisionView = {
   /** True when the router would have answered without asking. */
   wouldAnswer: boolean;
 };
-
-/**
- * Read the whole distribution out of a response, whatever the confidence.
- *
- * `pickDecision` decides whether to act. This one only reports, so the dialog
- * can show the numbers even when the router stays out of the way.
- */
-export function readDecision(
-  payload: unknown,
-  q: AskQuestion,
-  minConfidence: number = DECISION_DEFAULTS.minConfidence
-): DecisionView | null {
-  const root = asRecord(payload);
-  const answers = root && asRecord(root.answers);
-  const pick = answers && asRecord(answers.pick);
-  if (!pick) return null;
-
-  const choice = asString(pick.choice);
-  const confidence = asNumber(pick.confidence);
-  if (choice === null || confidence === null) return null;
-
-  const probabilities: Record<string, number> = {};
-  const raw = asRecord(pick.probabilities);
-  if (raw) {
-    for (const [label, value] of Object.entries(raw)) {
-      const n = asNumber(value);
-      if (n !== null) probabilities[label] = n;
-    }
-  }
-  const offered = q.options.some((o) => o.label === choice);
-  return {
-    question: q.question,
-    probabilities,
-    choice,
-    confidence,
-    wouldAnswer: offered && confidence >= minConfidence,
-  };
-}
 
 /**
  * Draw a proportional bar.
