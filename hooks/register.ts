@@ -4,6 +4,7 @@ import {
   DECISION_DEFAULTS,
   DECISION_KEY,
   ROSTER_KEY,
+  MAX_PANEL_ROWS,
   SCAN_COMMAND,
   bar,
   isDecisionView,
@@ -211,43 +212,39 @@ export const register: Register = (on) => {
     }
 
     const el = $.ui.resolve(e);
-    const Box = el.Box;
-    const Text = el.Text;
-    const width = Math.max(24, Math.min((e.viewport?.columns ?? 80) - 24, 40));
-    const ranked = rankOptions(stored, question);
+    const width = Math.max(16, Math.min((e.viewport?.columns ?? 80) - 28, 32));
 
-    return h(
-      Box,
-      { flexDirection: 'column', gap: 1, paddingX: 1 },
-      h(Text, { bold: true, color: 'cyan' }, 'TypeSafe decision router'),
-      h(Text, { wrap: 'wrap' }, stored.question),
-      h(
-        Box,
-        { flexDirection: 'column' },
-        ...ranked.map((row) =>
-          h(
-            Box,
-            { flexDirection: 'row', gap: 1, key: row.label },
-            h(
-              Text,
-              { color: row.label === stored.choice ? 'green' : 'gray' },
-              bar(row.p, width)
-            ),
-            h(
-              Text,
-              { bold: row.label === stored.choice },
-              `${row.p.toFixed(2)}  ${row.label}`
-            )
-          )
-        )
-      ),
-      h(
-        Text,
-        { dimColor: true },
-        stored.wouldAnswer
-          ? `confidence ${stored.confidence.toFixed(2)}, above the 0.75 floor, so the router would answer this itself`
-          : `confidence ${stored.confidence.toFixed(2)}, below the 0.75 floor, so this one is yours`
-      )
+    // The engine refuses a panel of more than 12 elements around the dialog,
+    // so each option is one Text rather than a Box holding two. That leaves
+    // room for the title, the footer and core's own node.
+    const ranked = rankOptions(stored, question).slice(0, MAX_PANEL_ROWS);
+    const rows = ranked.map((row) =>
+      el.Text({
+        key: row.label,
+        color: row.label === stored.choice ? 'green' : 'gray',
+        bold: row.label === stored.choice,
+        children: `${bar(row.p, width)} ${row.p.toFixed(2)}  ${row.label}`,
+      })
     );
+
+    // The dialog is drawn by exactly one engine node, so this wraps core's own
+    // tree rather than replacing it. A tree with no engine node is refused.
+    const core = await next(e);
+
+    return el.Box({
+      flexDirection: 'column',
+      paddingX: 1,
+      children: [
+        el.Text({ bold: true, color: 'cyan', children: 'TypeSafe decision router' }),
+        ...rows,
+        el.Text({
+          dimColor: true,
+          children: stored.wouldAnswer
+            ? `confidence ${stored.confidence.toFixed(2)}, over the 0.75 floor`
+            : `confidence ${stored.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`,
+        }),
+        core,
+      ],
+    });
   });
 };

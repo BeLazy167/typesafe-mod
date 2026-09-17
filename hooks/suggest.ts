@@ -72,9 +72,17 @@ export function isSkillEntry(v: unknown): v is SkillEntry {
   return r !== null && typeof r.name === 'string' && typeof r.description === 'string';
 }
 
+/**
+ * Flatten to one line and cap the length, ellipsis included.
+ *
+ * The ellipsis counts against the budget. Slicing to `max - 1` and then adding
+ * three characters returns `max + 2`, which overspends the token budget on
+ * every skill in the roster at once.
+ */
 function truncate(s: string, max: number): string {
   const flat = s.replace(/\s+/g, ' ').trim();
-  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}...`;
+  if (flat.length <= max) return flat;
+  return `${flat.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
 }
 
 /**
@@ -357,6 +365,16 @@ export function decisionNote(q: AskQuestion, d: Decision): string {
 // ---------------------------------------------------------------------------
 // Show-your-work mode: draw Jev's distribution over the dialog.
 // ---------------------------------------------------------------------------
+
+/**
+ * How many option rows the panel draws.
+ *
+ * The engine refuses a panel that adds too much around the dialog. Measured on
+ * 2.1.274: four rows draw, six are refused, with the title, footer, wrapper and
+ * core node also counting against the budget. Four leaves a margin, and a
+ * question with more options than that is rare.
+ */
+export const MAX_PANEL_ROWS = 4;
 
 /** Slot holding the last decision, for the render hook to read. */
 export const DECISION_KEY = 'last-decision.v1';
