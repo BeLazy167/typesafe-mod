@@ -1,0 +1,28 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Checks the manifests and reports which events the module hooks,
+      # which $ nouns it calls, and which environment variables it reads.
+      - name: Validate the plugin
+        run: claude plugin validate .
+
+      # Runs hooks/*.test.ts against the engine's own test harness.
+      - name: Run the plugin tests
+        run: claude plugin test .
