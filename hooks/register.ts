@@ -25,6 +25,8 @@ import {
   readDecisions,
   isDecisionViewList,
   decisionLine,
+  summaryRow,
+  pairDecisions,
 } from './suggest';
 
 /**
@@ -218,45 +220,63 @@ export const register: Register = (on) => {
       return next(e);
     }
 
-    // The engine caps what a hook may add around a dialog, so a batched dialog
-    // gets bars for its first answered question only. The rest are in the
-    // transcript, where text costs nothing.
     const steps = questions.routable;
-    let index = -1;
-    for (let i = 0; i < steps.length; i++) {
-      if (stored.some((v) => v.question === steps[i]?.question)) {
-        index = i;
-        break;
-      }
-    }
-    if (index < 0) {
+    const paired = pairDecisions(steps, stored);
+    if (paired.length === 0) {
       $.ui.log('typesafe-mod: render skipped, no decision matches this dialog');
       return next(e);
     }
 
-    const question = steps[index]!;
-    const view = stored.find((v) => v.question === question.question)!;
-
     const el = $.ui.resolve(e);
-    const width = Math.max(16, Math.min((e.viewport?.columns ?? 80) - 28, 32));
+    const columns = e.viewport?.columns ?? 80;
+    const multi = paired.length > 1;
 
-    // One Text per option rather than a Box holding two, to stay inside the
-    // element budget. Measured on 2.1.274: four rows draw, six are refused.
-    const rows = rankOptions(view, question)
-      .slice(0, MAX_PANEL_ROWS)
-      .map((row) =>
+    // The render event never says which step the dialog is showing, so a
+    // batched dialog gets one row per question rather than one question's
+    // option bars. Pinning the panel to step one would misread every later
+    // step as belonging to the first.
+    let rows;
+    let title;
+    let footer;
+    if (multi) {
+      const shown = paired.slice(0, MAX_PANEL_ROWS);
+      const labelWidth = Math.min(
+        shown.reduce((w, p) => Math.max(w, p.view.choice.length), 0),
+        Math.max(8, columns - 34)
+      );
+      const barWidth = Math.max(8, Math.min(columns - labelWidth - 28, 16));
+      rows = shown.map((p, i) =>
         el.Text({
-          key: row.label,
-          color: row.label === view.choice ? 'green' : 'gray',
-          bold: row.label === view.choice,
-          children: `${bar(row.p, width)} ${row.p.toFixed(2)}  ${row.label}`,
+          key: `q${i}`,
+          color: p.view.wouldAnswer ? 'green' : 'gray',
+          bold: p.view.wouldAnswer,
+          children: summaryRow(p.view, barWidth, labelWidth),
         })
       );
-
-    const title =
-      steps.length > 1
-        ? `TypeSafe decision router  (question ${index + 1} of ${steps.length})`
-        : 'TypeSafe decision router';
+      const over = paired.filter((p) => p.view.wouldAnswer).length;
+      title = `TypeSafe decision router  (${paired.length} questions, one row each)`;
+      footer =
+        over === 0
+          ? 'none cleared the 0.75 floor, so every one of these is yours'
+          : `${over} of ${paired.length} cleared the 0.75 floor, marked with a tick`;
+    } else {
+      const only = paired[0]!;
+      const width = Math.max(16, Math.min(columns - 28, 32));
+      rows = rankOptions(only.view, only.question)
+        .slice(0, MAX_PANEL_ROWS)
+        .map((row) =>
+          el.Text({
+            key: row.label,
+            color: row.label === only.view.choice ? 'green' : 'gray',
+            bold: row.label === only.view.choice,
+            children: `${bar(row.p, width)} ${row.p.toFixed(2)}  ${row.label}`,
+          })
+        );
+      title = 'TypeSafe decision router';
+      footer = only.view.wouldAnswer
+        ? `confidence ${only.view.confidence.toFixed(2)}, over the 0.75 floor`
+        : `confidence ${only.view.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`;
+    }
 
     // The dialog is drawn by exactly one engine node, so this wraps core's own
     // tree rather than replacing it. A tree with no engine node is refused.
@@ -268,12 +288,7 @@ export const register: Register = (on) => {
       children: [
         el.Text({ bold: true, color: 'cyan', children: title }),
         ...rows,
-        el.Text({
-          dimColor: true,
-          children: view.wouldAnswer
-            ? `confidence ${view.confidence.toFixed(2)}, over the 0.75 floor`
-            : `confidence ${view.confidence.toFixed(2)}, under the 0.75 floor, so this one is yours`,
-        }),
+        el.Text({ dimColor: true, children: footer }),
         core,
       ],
     });
