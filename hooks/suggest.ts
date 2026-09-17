@@ -35,7 +35,9 @@ export const DEFAULTS = {
   // Sized well above the 160 unique skills seen here; raise it if a scan
   // reports hitting it.
   maxSkills: 500,
-  descriptionChars: 220,
+  // 80 beat 220 on measurement: 33% fewer input tokens and higher confidence
+  // on the same answer. The long tail of a description was mostly noise.
+  descriptionChars: 80,
   /** Give up before the engine's uncatchable 10 s dispatch budget bites. */
   budgetMs: 4000,
 };
@@ -49,7 +51,9 @@ export const DEFAULTS = {
 export const SCAN_COMMAND: readonly string[] = [
   'sh',
   '-c',
-  'find "$HOME/.claude/skills" "$HOME/.claude/plugins" -type f -name SKILL.md 2>/dev/null ' +
+  // -L follows symlinks. Most of ~/.claude/skills is symlinked, and without
+  // it the scan saw 4 of 46 entries and could never suggest those skills.
+  'find -L "$HOME/.claude/skills" "$HOME/.claude/plugins" -type f -name SKILL.md 2>/dev/null ' +
     '| head -2000 ' +
     '| while IFS= read -r f; do printf "===SKILL===%s\\n" "$f"; sed -n "1,60p" "$f"; done',
 ];

@@ -34,6 +34,9 @@ export const register: Register = (on) => {
   // like this in session.start: a prompt.submit hook has a 10 s dispatch
   // budget, enforced outside the hook, that a cold scan could blow.
   on('session.start', async ($, e, next) => {
+    // The skill router is opt-in. Off, there is nothing to scan for.
+    const enabled = await $.env.get('TYPESAFE_SKILL_ROUTER');
+    if (!enabled) return next(e);
     try {
       const scan = await $.process.run(SCAN_COMMAND, { timeoutMs: 8000 });
       const roster = parseRoster(scan.stdout);
@@ -53,6 +56,13 @@ export const register: Register = (on) => {
   });
 
   on('prompt.submit', async ($, e, next) => {
+    // Opt-in: this hook runs on every prompt, so it costs 160-420 ms of the
+    // turn each time. The money is negligible (Jev bills input only, at
+    // $0.042/M, so about $1.35 a month at 100 prompts a day); the latency is
+    // not. Off by default, on with TYPESAFE_SKILL_ROUTER=1.
+    const enabled = await $.env.get('TYPESAFE_SKILL_ROUTER');
+    if (!enabled) return next(e);
+
     const text = typeof e.text === 'string' ? e.text.trim() : '';
     // A slash command already names what it wants, and a very short prompt
     // carries too little to route on.
