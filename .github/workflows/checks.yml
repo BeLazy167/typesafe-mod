@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # `plugin test` is part of the function-hooks early access surface and is
+  # absent without this, even on the same published version.
+  CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: '1'
+
 jobs:
   plugin:
     runs-on: ubuntu-latest
@@ -23,6 +28,7 @@ jobs:
       - name: Validate the plugin
         run: claude plugin validate .
 
-      # Runs hooks/*.test.ts against the engine's own test harness.
+      # Runs hooks/*.test.ts against the engine's own test harness. The
+      # harness runs offline: no fs, network or process beneath the plugins.
       - name: Run the plugin tests
         run: claude plugin test .
