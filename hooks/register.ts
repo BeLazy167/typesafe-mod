@@ -144,13 +144,22 @@ export const register: Register = (on) => {
 
       if (res !== null && res.ok) {
         const payload: unknown = JSON.parse(res.text);
+        const view = readDecision(payload, question, DECISION_DEFAULTS.minConfidence);
 
-        // Show-your-work mode. Let the dialog open and hand the render hook
-        // the distribution, so the numbers are visible instead of a log line.
+        // Record the distribution whatever happens next. When the dialog does
+        // open, the render hook can then show why the router stood aside,
+        // which is the case where the numbers are most worth seeing.
+        if (view) await $.store.set(DECISION_KEY, view);
+        else await $.store.delete(DECISION_KEY);
+
+        // Show-your-work mode lets the dialog open so the numbers are drawn.
         const show = await $.env.get('TYPESAFE_SHOW_WORK');
         if (show) {
-          const view = readDecision(payload, question, DECISION_DEFAULTS.minConfidence);
-          if (view) await $.store.set(DECISION_KEY, view);
+          $.ui.log(
+            view
+              ? `typesafe-mod: show-work, ${view.choice} at ${view.confidence.toFixed(2)}`
+              : 'typesafe-mod: show-work, but no decision could be read'
+          );
           return next(e);
         }
 
@@ -178,11 +187,21 @@ export const register: Register = (on) => {
   // and no dialog is ever drawn.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const stored = await $.store.get(DECISION_KEY);
-    if (!isDecisionView(stored)) return next(e);
+    if (!isDecisionView(stored)) {
+      $.ui.log('typesafe-mod: render skipped, no stored decision');
+      return next(e);
+    }
 
     const question = readAskQuestion((e.props as { questions?: unknown }).questions);
+    if (!question) {
+      $.ui.log('typesafe-mod: render skipped, dialog props did not parse');
+      return next(e);
+    }
     // A stale decision belongs to an earlier dialog, so draw the engine's own.
-    if (!question || question.question !== stored.question) return next(e);
+    if (question.question !== stored.question) {
+      $.ui.log(`typesafe-mod: render skipped, stale decision for "${stored.question.slice(0, 40)}"`);
+      return next(e);
+    }
 
     const el = $.ui.resolve(e);
     const Box = el.Box;
