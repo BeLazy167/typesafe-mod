@@ -30,13 +30,13 @@ export const DEFAULTS = {
   minConfidence: 0.6,
   /** Below this Noul, the turn does not want a procedure at all. */
   minNeedsSkill: 0.5,
-  // A cap that bites drops real skills silently: at 120 this roster lost
-  // `resolving-merge-conflicts` and the router went quiet on merge conflicts.
-  // Sized well above the 160 unique skills seen here; raise it if a scan
-  // reports hitting it.
+  // A cap that is too low drops real skills without saying so. At 120 this
+  // list lost `resolving-merge-conflicts`, and the router then said nothing
+  // about merge conflicts. This sits well above the 194 skills seen here.
+  // Raise it if a scan reports hitting it.
   maxSkills: 500,
-  // 80 beat 220 on measurement: 33% fewer input tokens and higher confidence
-  // on the same answer. The long tail of a description was mostly noise.
+  // 80 measured better than 220. It used 37% fewer input tokens and gave
+  // higher confidence on the same answer. The rest of a description was noise.
   descriptionChars: 80,
   /** Give up before the engine's uncatchable 10 s dispatch budget bites. */
   budgetMs: 4000,

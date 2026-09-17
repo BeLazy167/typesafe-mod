@@ -41,8 +41,9 @@ export const register: Register = (on) => {
       const scan = await $.process.run(SCAN_COMMAND, { timeoutMs: 8000 });
       const roster = parseRoster(scan.stdout);
       await $.store.set(ROSTER_KEY, roster);
-      // A cap that bites drops real skills and the router goes quiet on them,
-      // which reads exactly like "nothing fits". Say so instead.
+      // A cap that is too low drops real skills, and the router then says
+      // nothing about them. That looks exactly like "nothing fits", so report
+      // it instead of staying silent.
       if (roster.length >= DEFAULTS.maxSkills) {
         $.ui.log(`typesafe-mod: roster hit the ${DEFAULTS.maxSkills} cap; raise maxSkills`);
       } else {
