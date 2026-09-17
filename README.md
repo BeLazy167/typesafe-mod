@@ -13,9 +13,10 @@ allowing or blocking one.
 ## What it does
 
 **Decision router, on `tool.call` for `AskUserQuestion`.** When the agent stops
-to ask you a this-or-that question, Jev answers it instead. The dialog never
-opens and the turn keeps going. If Jev is not confident enough, you get asked as
-normal. This runs by default.
+to ask you a this-or-that question, the hook sends that question to Jev and puts
+the probability for each option in the transcript beside the dialog. You still
+choose. `TYPESAFE_AUTO_ANSWER=1` lets Jev answer instead, so the dialog never
+opens. This runs by default.
 
 **Skill router, on `prompt.submit`.** One request ranks every installed skill
 against your prompt and asks whether the turn needs a procedure at all. A
@@ -141,9 +142,12 @@ cannot reach `~/.claude`.
 The scan runs `find -L`. Most of `~/.claude/skills` is symlinks, and without
 `-L` the scan found 4 of 46 entries.
 
-The hook answers `AskUserQuestion` with `{ deny: text }`. The generated types do
-not declare that tool's own result shape, and a guessed shape breaks the dialog.
-`deny` is typed, documented, and its string reaches the agent.
+In auto-answer mode the hook returns `{ deny: text }`, which is the only way a
+hook can answer a tool call it is given. The engine defines `deny` as "the model
+receives the text as an error result", so the answer renders in red. `{ result }`
+would render normally, but core validates it against the tool's output schema
+and the generated types declare none for `AskUserQuestion`. That is why advising
+is the default.
 
 The router skips multi-select questions and batches of questions. Neither one is
 a single Choice, and approximating them would answer a question you did not ask.
@@ -162,5 +166,5 @@ a single Choice, and approximating them would answer a question you did not ask.
 
 ```sh
 claude plugin validate typesafe-skill-mod
-claude plugin test typesafe-skill-mod     # 7 tests
+claude plugin test typesafe-skill-mod     # 10 tests
 ```
