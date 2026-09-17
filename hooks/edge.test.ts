@@ -229,7 +229,7 @@ const draw = ($: Ui, props: unknown, viewport?: { columns: number; rows: number 
   $.ui.render({ surface: 'terminal', component: 'AskUserQuestion', requestId: 'r', viewport, props });
 
 test('the panel holds together at any terminal width', async ($, on) => {
-  mock.store(on, { [DECISION_KEY]: view });
+  mock.store(on, { [DECISION_KEY]: [view] });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
 
   for (const columns of [20, 40, 80, 200, 1000]) {
@@ -250,7 +250,7 @@ test('the panel holds together at any terminal width', async ($, on) => {
 });
 
 test('the panel stands aside for a question it has no decision for', async ($, on) => {
-  mock.store(on, { [DECISION_KEY]: view });
+  mock.store(on, { [DECISION_KEY]: [view] });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
   // A stale decision from an earlier dialog must not be drawn over a new one.
   const stale = { tool: 'AskUserQuestion', questions: [{ question: 'A different question?', options: [{ label: 'A' }, { label: 'B' }] }] };
@@ -259,7 +259,7 @@ test('the panel stands aside for a question it has no decision for', async ($, o
 });
 
 test('the panel stands aside when the stored value is junk', async ($, on) => {
-  mock.store(on, { [DECISION_KEY]: { not: 'a decision' } });
+  mock.store(on, { [DECISION_KEY]: [{ not: 'a decision' }] });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
   const json = JSON.stringify(await draw($ as Ui, mkProps([{ label: 'A' }, { label: 'B' }]), { columns: 100, rows: 40 }));
   expect(json).not.toContain('TypeSafe decision router');
@@ -273,7 +273,7 @@ test('the panel draws a row per option when there are more than two', async ($, 
     wouldAnswer: false,
     probabilities: { 'Fix forward': 0.6, 'Roll back': 0.34, 'Roll back, then fix': 0.06 },
   };
-  mock.store(on, { [DECISION_KEY]: three });
+  mock.store(on, { [DECISION_KEY]: [three] });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
   const props = mkProps([{ label: 'Roll back' }, { label: 'Fix forward' }, { label: 'Roll back, then fix' }]);
   const json = JSON.stringify(await draw($ as Ui, props, { columns: 100, rows: 40 }));
@@ -301,13 +301,13 @@ test('a long option list stays inside the engine element budget', async ($, on) 
   labels.forEach((l, i) => (probabilities[l] = (10 - i) / 55));
 
   mock.store(on, {
-    [DECISION_KEY]: {
+    [DECISION_KEY]: [{
       question: QUESTION,
       choice: 'Option 0',
       confidence: 0.8,
       wouldAnswer: true,
       probabilities,
-    },
+    }],
   });
   on('ui.render', () => ({ type: 'engine', ref: 0 }));
 

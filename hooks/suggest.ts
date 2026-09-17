@@ -457,3 +457,137 @@ export function isDecisionView(v: unknown): v is DecisionView {
     asRecord(r.probabilities) !== null
   );
 }
+
+// ---------------------------------------------------------------------------
+// Batched dialogs: several questions in one AskUserQuestion call.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read every routable question out of an AskUserQuestion call.
+ *
+ * A dialog may carry several steps. Each single-select step with two or more
+ * options is its own Choice. Multi-select steps are dropped rather than
+ * approximated, and a call with none of them routes nothing.
+ *
+ * @param input The tool call's `questions` value, typed `unknown[]`.
+ * @returns The routable questions in the order the dialog draws them.
+ */
+export function readAskQuestions(input: unknown): AskQuestion[] {
+  if (!Array.isArray(input)) return [];
+  const out: AskQuestion[] = [];
+  for (const raw of input) {
+    const q = asRecord(raw);
+    if (!q || q.multiSelect === true) continue;
+
+    const question = asString(q.question);
+    if (!question || !Array.isArray(q.options) || q.options.length < 2) continue;
+
+    const options: AskOption[] = [];
+    let ok = true;
+    for (const rawOption of q.options) {
+      const o = asRecord(rawOption);
+      const label = o && asString(o.label);
+      if (!label) {
+        ok = false;
+        break;
+      }
+      options.push({ label, description: (o && asString(o.description)) || undefined });
+    }
+    if (ok) out.push({ question, options });
+  }
+  return out;
+}
+
+/** The id a question carries in a batched request. */
+const questionId = (index: number) => `q${index}`;
+
+/**
+ * Build one request covering every question in a batched dialog.
+ *
+ * The questions are independent, so they ride one request and Jev answers them
+ * in parallel. One call costs what a single question costs in latency, and the
+ * shared situation is sent once rather than per question.
+ */
+export function buildBatchRequest(
+  questions: readonly AskQuestion[],
+  situation: string,
+  model: string = DEFAULTS.model
+): Record<string, unknown> {
+  const asked: Record<string, unknown> = {};
+  const state: Record<string, unknown> = { situation };
+
+  questions.forEach((q, i) => {
+    const id = questionId(i);
+    const criteria: Record<string, string> = {};
+    for (const o of q.options) criteria[o.label] = o.description ?? o.label;
+    state[id] = q.question;
+    asked[id] = {
+      type: 'choice',
+      instructions:
+        `${q.question} Decide from \`state.${id}\` and \`state.situation\`, ` +
+        'judging each option only by its description.',
+      criteria,
+    };
+  });
+
+  return { model, state, questions: asked };
+}
+
+/**
+ * Read one view per question out of a batched response.
+ *
+ * A question Jev could not answer is skipped rather than guessed at, so the
+ * result may be shorter than the input. Order follows the questions given.
+ */
+export function readDecisions(
+  payload: unknown,
+  questions: readonly AskQuestion[],
+  minConfidence: number = DECISION_DEFAULTS.minConfidence
+): DecisionView[] {
+  const root = asRecord(payload);
+  const answers = root && asRecord(root.answers);
+  if (!answers) return [];
+
+  const out: DecisionView[] = [];
+  questions.forEach((q, i) => {
+    const pick = asRecord(answers[questionId(i)]);
+    if (!pick) return;
+
+    const choice = asString(pick.choice);
+    const confidence = asNumber(pick.confidence);
+    if (choice === null || confidence === null) return;
+
+    const probabilities: Record<string, number> = {};
+    const raw = asRecord(pick.probabilities);
+    if (raw) {
+      for (const [label, value] of Object.entries(raw)) {
+        const n = asNumber(value);
+        if (n !== null) probabilities[label] = n;
+      }
+    }
+    const offered = q.options.some((o) => o.label === choice);
+    out.push({
+      question: q.question,
+      probabilities,
+      choice,
+      confidence,
+      wouldAnswer: offered && confidence >= minConfidence,
+    });
+  });
+  return out;
+}
+
+/** Narrows a list of views recovered from `$.store`. */
+export function isDecisionViewList(v: unknown): v is DecisionView[] {
+  return Array.isArray(v) && v.length > 0 && v.every(isDecisionView);
+}
+
+/** One transcript line describing what Jev said about one question. */
+export function decisionLine(view: DecisionView, q: AskQuestion, prefix = ''): string {
+  const spread = rankOptions(view, q)
+    .map((r) => `${r.label} ${r.p.toFixed(2)}`)
+    .join(', ');
+  return view.wouldAnswer
+    ? `typesafe-mod: ${prefix}Jev picks ${view.choice} (${spread}), confidence ${view.confidence.toFixed(2)}`
+    : `typesafe-mod: ${prefix}Jev leans ${view.choice} (${spread}), but confidence ${view.confidence.toFixed(2)} is under the floor, so this one is yours`;
+}
