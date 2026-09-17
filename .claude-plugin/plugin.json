@@ -1,8 +1,11 @@
 {
   "name": "typesafe-mod",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Routes decisions to TypeSafe's Jev model: ranks installed skills for each prompt, and answers the agent's own this-or-that questions when confident.",
-  "author": { "name": "BeLazy167", "url": "https://github.com/BeLazy167" },
+  "author": {
+    "name": "BeLazy167",
+    "url": "https://github.com/BeLazy167"
+  },
   "homepage": "https://github.com/BeLazy167/typesafe-mod",
   "license": "MIT"
 }
